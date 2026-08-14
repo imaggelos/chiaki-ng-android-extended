@@ -110,6 +110,12 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 		preferenceManager.preferenceDataStore = DataStore(preferences)
 		setPreferencesFromResource(R.xml.preferences, rootKey)
 
+		// Add Edit Touch Layout launcher preference handler after preferences are inflated
+		preferenceScreen.findPreference<Preference>("pref_edit_touch_layout")?.setOnPreferenceClickListener {
+			startActivity(Intent(requireContext(), TouchLayoutEditorActivity::class.java))
+			true
+		}
+
 		preferenceScreen.findPreference<ListPreference>(getString(R.string.preferences_resolution_key))?.let {
 			it.entryValues = Preferences.resolutionAll.map { res -> res.value }.toTypedArray()
 			it.entries = Preferences.resolutionAll.map { res -> getString(res.title) }.toTypedArray()
