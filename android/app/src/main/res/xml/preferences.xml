@@ -13,6 +13,11 @@
             app:fragment="com.metallic.chiaki.settings.SettingsRegisteredHostsFragment"
             app:icon="@drawable/ic_console_simple"/>
 
+        <Preference
+            android:key="pref_edit_touch_layout"
+            android:title="Edit Touch Layout"
+            android:summary="Move and toggle on-screen buttons; positions are saved" />
+
         <SwitchPreference
             app:key="@string/preferences_swap_cross_moon_key"
             app:title="@string/preferences_swap_cross_moon_title"
