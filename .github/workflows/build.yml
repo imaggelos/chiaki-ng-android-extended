@@ -19,6 +19,28 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive
 
+      - name: Patch Oboe resampler files to include <cassert>
+        run: |
+          files=(
+            "android/app/src/main/cpp/oboe/src/flowgraph/resampler/PolyphaseResampler.cpp"
+            "android/app/src/main/cpp/oboe/src/flowgraph/resampler/PolyphaseResamplerMono.cpp"
+            "android/app/src/main/cpp/oboe/src/flowgraph/resampler/SincResampler.cpp"
+            "android/app/src/main/cpp/oboe/src/flowgraph/resampler/PolyphaseResamplerStereo.cpp"
+            "android/app/src/main/cpp/oboe/src/flowgraph/resampler/SincResamplerStereo.cpp"
+          )
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              if ! grep -q '^#include <cassert>' "$f"; then
+                echo "Patching $f"
+                sed -i '1i#include <cassert>' "$f"
+              else
+                echo "Already has <cassert>: $f"
+              fi
+            else
+              echo "File not found (skipping): $f"
+            fi
+          done
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
