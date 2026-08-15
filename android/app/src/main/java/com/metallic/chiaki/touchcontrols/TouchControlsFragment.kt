@@ -47,18 +47,20 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
 
     // Motion handling
     private val motionHandler = Handler(Looper.getMainLooper())
-    // Increase pulse duration so network has time to transmit multiple packets
-    private val MOTION_IMPULSE_MS = 180L
-    private val MOTION_REPEAT_INTERVAL_MS = 220L
+    // Extended pulse duration so network has time to transmit multiple packets
+    private val MOTION_IMPULSE_MS = 250L
+    private val MOTION_REPEAT_INTERVAL_MS = 300L
     private val motionRepeatRunnables = mutableMapOf<MotionDir, Runnable>()
 
-    // Aggressive impulse magnitudes (increased for strong flicks)
-    private val IMPULSE_ACCEL_DOWN = -60.0f
-    private val IMPULSE_ACCEL_UP = 60.0f
-    private val IMPULSE_ACCEL_LEFT = -60.0f
-    private val IMPULSE_ACCEL_RIGHT = 60.0f
-    // Aggressive gyroscope values (units consistent with ControllerState expected range)
-    private val IMPULSE_GYRO_STRONG = 800.0f
+    // Extreme accelerometer impulses (very large flicks)
+    private val IMPULSE_ACCEL_DOWN = -120.0f
+    private val IMPULSE_ACCEL_UP = 120.0f
+    private val IMPULSE_ACCEL_LEFT = -120.0f
+    private val IMPULSE_ACCEL_RIGHT = 120.0f
+
+    // Extreme gyroscope impulses
+    private val IMPULSE_GYRO_STRONG = 2000.0f
+
     private val NEUTRAL_GYRO = 0.0f
     private val NEUTRAL_ORIENT_W = 1.0f
 
@@ -132,23 +134,18 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     }
 
     private fun setupMotionButton(button: View, dir: MotionDir, idStr: String) {
-        // Short press = single impulse; hold = repeating pulses
         button.isClickable = true
         button.isFocusable = true
         button.setOnTouchListener { v, ev ->
             when (ev.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // provide immediate visual & haptic feedback so user knows the tap fired
-                    try {
-                        v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    } catch (ignored: Throwable) {}
+                    // visual and haptic feedback
+                    try { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) } catch (_: Throwable) {}
                     v.alpha = 0.6f
-
                     startMotionPulse(dir, singleShot = false)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     stopMotionPulse(dir)
-                    // restore visual state
                     v.alpha = 1.0f
                 }
             }
@@ -157,7 +154,6 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     }
 
     private fun startMotionPulse(dir: MotionDir, singleShot: Boolean) {
-        // Emit a strong combined accel+gyro pulse and schedule clearing after the pulse duration
         emitPulse(dir)
         motionHandler.postDelayed({ clearMotionFields() }, MOTION_IMPULSE_MS)
 
@@ -178,17 +174,20 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     private fun emitPulse(dir: MotionDir) {
         when (dir) {
             MotionDir.DOWN -> {
-                // aggressive downward jerk: negative Y accel and rotation around X axis
-                setMotionFields(0f, IMPULSE_ACCEL_DOWN, 0f, IMPULSE_GYRO_STRONG, 0f, 0f)
+                // Extreme downward jerk: apply large negative Y and Z accel and strong gyro on X and Y
+                setMotionFields(0f, IMPULSE_ACCEL_DOWN, IMPULSE_ACCEL_DOWN, IMPULSE_GYRO_STRONG, IMPULSE_GYRO_STRONG, 0f)
             }
             MotionDir.UP -> {
-                setMotionFields(0f, IMPULSE_ACCEL_UP, 0f, -IMPULSE_GYRO_STRONG, 0f, 0f)
+                // Extreme upward: positive Y and Z accel and inverse gyro
+                setMotionFields(0f, IMPULSE_ACCEL_UP, IMPULSE_ACCEL_UP, -IMPULSE_GYRO_STRONG, -IMPULSE_GYRO_STRONG, 0f)
             }
             MotionDir.LEFT -> {
-                setMotionFields(IMPULSE_ACCEL_LEFT, 0f, 0f, 0f, -IMPULSE_GYRO_STRONG, 0f)
+                // Extreme left flick: large negative X and Z accel, gyro heavy on Y and X mix
+                setMotionFields(IMPULSE_ACCEL_LEFT, 0f, IMPULSE_ACCEL_LEFT, 0f, -IMPULSE_GYRO_STRONG, IMPULSE_GYRO_STRONG)
             }
             MotionDir.RIGHT -> {
-                setMotionFields(IMPULSE_ACCEL_RIGHT, 0f, 0f, 0f, IMPULSE_GYRO_STRONG, 0f)
+                // Extreme right flick: large positive X and Z accel, gyro heavy on Y and X mix
+                setMotionFields(IMPULSE_ACCEL_RIGHT, 0f, IMPULSE_ACCEL_RIGHT, 0f, IMPULSE_GYRO_STRONG, -IMPULSE_GYRO_STRONG)
             }
         }
     }
