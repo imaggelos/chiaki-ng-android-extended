@@ -5,6 +5,7 @@ package com.metallic.chiaki.touchcontrols
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -46,16 +47,18 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
 
     // Motion handling
     private val motionHandler = Handler(Looper.getMainLooper())
-    // Very short, sharp impulse so the game sees an instant flick
-    private val MOTION_IMPULSE_MS = 40L
-    private val MOTION_REPEAT_INTERVAL_MS = 160L
+    // Increase pulse duration so network has time to transmit multiple packets
+    private val MOTION_IMPULSE_MS = 180L
+    private val MOTION_REPEAT_INTERVAL_MS = 220L
     private val motionRepeatRunnables = mutableMapOf<MotionDir, Runnable>()
 
-    // Aggressive impulse magnitudes (increased 5x-10x over previous values)
-    private val IMPULSE_ACCEL_DOWN = -40.0f
-    private val IMPULSE_ACCEL_UP = 40.0f
-    private val IMPULSE_ACCEL_LEFT = -30.0f
-    private val IMPULSE_ACCEL_RIGHT = 30.0f
+    // Aggressive impulse magnitudes (increased for strong flicks)
+    private val IMPULSE_ACCEL_DOWN = -60.0f
+    private val IMPULSE_ACCEL_UP = 60.0f
+    private val IMPULSE_ACCEL_LEFT = -60.0f
+    private val IMPULSE_ACCEL_RIGHT = 60.0f
+    // Aggressive gyroscope values (units consistent with ControllerState expected range)
+    private val IMPULSE_GYRO_STRONG = 800.0f
     private val NEUTRAL_GYRO = 0.0f
     private val NEUTRAL_ORIENT_W = 1.0f
 
@@ -130,17 +133,31 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
 
     private fun setupMotionButton(button: View, dir: MotionDir, idStr: String) {
         // Short press = single impulse; hold = repeating pulses
-        button.setOnTouchListener { _, ev ->
+        button.isClickable = true
+        button.isFocusable = true
+        button.setOnTouchListener { v, ev ->
             when (ev.action) {
-                MotionEvent.ACTION_DOWN -> startMotionPulse(dir, singleShot = false)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> stopMotionPulse(dir)
+                MotionEvent.ACTION_DOWN -> {
+                    // provide immediate visual & haptic feedback so user knows the tap fired
+                    try {
+                        v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    } catch (ignored: Throwable) {}
+                    v.alpha = 0.6f
+
+                    startMotionPulse(dir, singleShot = false)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopMotionPulse(dir)
+                    // restore visual state
+                    v.alpha = 1.0f
+                }
             }
             true
         }
     }
 
     private fun startMotionPulse(dir: MotionDir, singleShot: Boolean) {
-        // Emit a very sharp high-magnitude pulse and schedule immediate clearing
+        // Emit a strong combined accel+gyro pulse and schedule clearing after the pulse duration
         emitPulse(dir)
         motionHandler.postDelayed({ clearMotionFields() }, MOTION_IMPULSE_MS)
 
@@ -160,10 +177,19 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
 
     private fun emitPulse(dir: MotionDir) {
         when (dir) {
-            MotionDir.DOWN -> setMotionFields(0f, IMPULSE_ACCEL_DOWN, 0f, NEUTRAL_GYRO, NEUTRAL_GYRO, NEUTRAL_GYRO)
-            MotionDir.UP -> setMotionFields(0f, IMPULSE_ACCEL_UP, 0f, NEUTRAL_GYRO, NEUTRAL_GYRO, NEUTRAL_GYRO)
-            MotionDir.LEFT -> setMotionFields(IMPULSE_ACCEL_LEFT, 0f, 0f, NEUTRAL_GYRO, NEUTRAL_GYRO, NEUTRAL_GYRO)
-            MotionDir.RIGHT -> setMotionFields(IMPULSE_ACCEL_RIGHT, 0f, 0f, NEUTRAL_GYRO, NEUTRAL_GYRO, NEUTRAL_GYRO)
+            MotionDir.DOWN -> {
+                // aggressive downward jerk: negative Y accel and rotation around X axis
+                setMotionFields(0f, IMPULSE_ACCEL_DOWN, 0f, IMPULSE_GYRO_STRONG, 0f, 0f)
+            }
+            MotionDir.UP -> {
+                setMotionFields(0f, IMPULSE_ACCEL_UP, 0f, -IMPULSE_GYRO_STRONG, 0f, 0f)
+            }
+            MotionDir.LEFT -> {
+                setMotionFields(IMPULSE_ACCEL_LEFT, 0f, 0f, 0f, -IMPULSE_GYRO_STRONG, 0f)
+            }
+            MotionDir.RIGHT -> {
+                setMotionFields(IMPULSE_ACCEL_RIGHT, 0f, 0f, 0f, IMPULSE_GYRO_STRONG, 0f)
+            }
         }
     }
 
