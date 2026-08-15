@@ -16,7 +16,8 @@ class StreamInput(val context: Context, val preferences: Preferences)
 
 	val controllerState: ControllerState get()
 	{
-		val controllerState = sensorControllerState or keyControllerState or motionControllerState
+		// prioritize touchControllerState first so synthetic motion injected by the UI wins over device sensors
+		val controllerState = touchControllerState or sensorControllerState or keyControllerState or motionControllerState
 
 		val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 		@Suppress("DEPRECATION")
@@ -40,7 +41,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		if(motionControllerState.r2State > 0U)
 			controllerState.r2State = motionControllerState.r2State
 
-		return controllerState or touchControllerState
+		return controllerState
 	}
 
 	private val sensorControllerState = ControllerState() // from Motion Sensors
@@ -181,14 +182,14 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			val dpadX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
 			val dpadY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
 			val dpadButtons =
-				(if(dpadX > 0.5f) ControllerState.BUTTON_DPAD_RIGHT else 0U) or
+					(if(dpadX > 0.5f) ControllerState.BUTTON_DPAD_RIGHT else 0U) or
 						(if(dpadX < -0.5f) ControllerState.BUTTON_DPAD_LEFT else 0U) or
 						(if(dpadY > 0.5f) ControllerState.BUTTON_DPAD_DOWN else 0U) or
 						(if(dpadY < -0.5f) ControllerState.BUTTON_DPAD_UP else 0U)
-			it and (ControllerState.BUTTON_DPAD_RIGHT or
-					ControllerState.BUTTON_DPAD_LEFT or
-					ControllerState.BUTTON_DPAD_DOWN or
-					ControllerState.BUTTON_DPAD_UP).inv() or
+				it and (ControllerState.BUTTON_DPAD_RIGHT or
+						ControllerState.BUTTON_DPAD_LEFT or
+						ControllerState.BUTTON_DPAD_DOWN or
+						ControllerState.BUTTON_DPAD_UP).inv() or
 					dpadButtons
 		}
 		//Log.i("StreamSession", "motionEvent => $motionControllerState")
