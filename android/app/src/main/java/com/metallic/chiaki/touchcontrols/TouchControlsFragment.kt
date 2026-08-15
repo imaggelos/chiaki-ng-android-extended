@@ -55,9 +55,9 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     private val motionRepeatRunnables = mutableMapOf<MotionDir, Runnable>()
 
     // Safe, normalized accelerometer impulses (G-force-like)
-    private val IMPULSE_ACCEL_SAFE = 3.5f // ~3.5g
+    private val IMPULSE_ACCEL_SAFE = 5.5f // bumped to 5.5g per request
     // Safe, normalized gyroscope impulses
-    private val IMPULSE_GYRO_SAFE = 300.0f
+    private val IMPULSE_GYRO_SAFE = 500.0f // bumped to 500.0f per request
 
     // Synthetic motion active flag (prevents being zeroed by sensor updates by re-asserting values)
     @Volatile
@@ -196,11 +196,11 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         // Use safe, normalized magnitudes and assert them into ownControllerState repeatedly
         when (dir) {
             MotionDir.DOWN -> {
-                // assert both Y and Z accel negative, and both gyro X/Y positive
-                setMotionFields(0f, -IMPULSE_ACCEL_SAFE, -IMPULSE_ACCEL_SAFE, IMPULSE_GYRO_SAFE, IMPULSE_GYRO_SAFE, NEUTRAL_GYRO)
+                // assert both Y and Z accel negative, and both gyro Y/Z positive (swapped axes)
+                setMotionFields(0f, -IMPULSE_ACCEL_SAFE, -IMPULSE_ACCEL_SAFE, NEUTRAL_GYRO, IMPULSE_GYRO_SAFE, IMPULSE_GYRO_SAFE)
             }
             MotionDir.UP -> {
-                setMotionFields(0f, IMPULSE_ACCEL_SAFE, IMPULSE_ACCEL_SAFE, -IMPULSE_GYRO_SAFE, -IMPULSE_GYRO_SAFE, NEUTRAL_GYRO)
+                setMotionFields(0f, IMPULSE_ACCEL_SAFE, IMPULSE_ACCEL_SAFE, NEUTRAL_GYRO, -IMPULSE_GYRO_SAFE, -IMPULSE_GYRO_SAFE)
             }
             MotionDir.LEFT -> {
                 setMotionFields(-IMPULSE_ACCEL_SAFE, 0f, -IMPULSE_ACCEL_SAFE, NEUTRAL_GYRO, -IMPULSE_GYRO_SAFE, IMPULSE_GYRO_SAFE)
