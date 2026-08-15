@@ -47,19 +47,24 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
 
     // Motion handling
     private val motionHandler = Handler(Looper.getMainLooper())
-    // Extended pulse duration so network has time to transmit multiple packets
+    // Pulse length (250ms) to let the streamer send multiple updates
     private val MOTION_IMPULSE_MS = 250L
+    // how often to re-assert synthetic motion (ms)
+    private val MOTION_ASSERT_INTERVAL_MS = 40L
     private val MOTION_REPEAT_INTERVAL_MS = 300L
     private val motionRepeatRunnables = mutableMapOf<MotionDir, Runnable>()
 
-    // Extreme accelerometer impulses (very large flicks)
-    private val IMPULSE_ACCEL_DOWN = -120.0f
-    private val IMPULSE_ACCEL_UP = 120.0f
-    private val IMPULSE_ACCEL_LEFT = -120.0f
-    private val IMPULSE_ACCEL_RIGHT = 120.0f
+    // Safe, normalized accelerometer impulses (G-force-like)
+    private val IMPULSE_ACCEL_SAFE = 3.5f // ~3.5g
+    // Safe, normalized gyroscope impulses
+    private val IMPULSE_GYRO_SAFE = 300.0f
 
-    // Extreme gyroscope impulses
-    private val IMPULSE_GYRO_STRONG = 2000.0f
+    // Synthetic motion active flag (prevents being zeroed by sensor updates by re-asserting values)
+    @Volatile
+    private var isSyntheticMotionActive: Boolean = false
+
+    // Runnable used to continuously assert synthetic motion while active
+    private val syntheticAssertRunnables = mutableMapOf<MotionDir, Runnable>()
 
     private val NEUTRAL_GYRO = 0.0f
     private val NEUTRAL_ORIENT_W = 1.0f
@@ -139,13 +144,14 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         button.setOnTouchListener { v, ev ->
             when (ev.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // visual and haptic feedback
+                    // visual + haptic feedback
                     try { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) } catch (_: Throwable) {}
                     v.alpha = 0.6f
-                    startMotionPulse(dir, singleShot = false)
+                    // start synthetic pulse with continuous assertions
+                    startSyntheticMotion(dir)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    stopMotionPulse(dir)
+                    stopSyntheticMotion()
                     v.alpha = 1.0f
                 }
             }
@@ -153,51 +159,60 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         }
     }
 
-    private fun startMotionPulse(dir: MotionDir, singleShot: Boolean) {
-        emitPulse(dir)
-        motionHandler.postDelayed({ clearMotionFields() }, MOTION_IMPULSE_MS)
+    private fun startSyntheticMotion(dir: MotionDir) {
+        // If already active, restart timer
+        stopSyntheticMotion()
+        isSyntheticMotionActive = true
 
-        if (!singleShot) {
-            stopMotionPulse(dir)
-            val runnable = object : Runnable {
-                override fun run() {
-                    emitPulse(dir)
-                    motionHandler.postDelayed({ clearMotionFields() }, MOTION_IMPULSE_MS)
-                    motionHandler.postDelayed(this, MOTION_REPEAT_INTERVAL_MS)
-                }
-            }
-            motionRepeatRunnables[dir] = runnable
-            motionHandler.postDelayed(runnable, MOTION_REPEAT_INTERVAL_MS)
-        }
-    }
-
-    private fun emitPulse(dir: MotionDir) {
-        when (dir) {
-            MotionDir.DOWN -> {
-                // Extreme downward jerk: apply large negative Y and Z accel and strong gyro on X and Y
-                setMotionFields(0f, IMPULSE_ACCEL_DOWN, IMPULSE_ACCEL_DOWN, IMPULSE_GYRO_STRONG, IMPULSE_GYRO_STRONG, 0f)
-            }
-            MotionDir.UP -> {
-                // Extreme upward: positive Y and Z accel and inverse gyro
-                setMotionFields(0f, IMPULSE_ACCEL_UP, IMPULSE_ACCEL_UP, -IMPULSE_GYRO_STRONG, -IMPULSE_GYRO_STRONG, 0f)
-            }
-            MotionDir.LEFT -> {
-                // Extreme left flick: large negative X and Z accel, gyro heavy on Y and X mix
-                setMotionFields(IMPULSE_ACCEL_LEFT, 0f, IMPULSE_ACCEL_LEFT, 0f, -IMPULSE_GYRO_STRONG, IMPULSE_GYRO_STRONG)
-            }
-            MotionDir.RIGHT -> {
-                // Extreme right flick: large positive X and Z accel, gyro heavy on Y and X mix
-                setMotionFields(IMPULSE_ACCEL_RIGHT, 0f, IMPULSE_ACCEL_RIGHT, 0f, IMPULSE_GYRO_STRONG, -IMPULSE_GYRO_STRONG)
+        // Start continuous assertion runnable that re-applies synthetic motion every MOTION_ASSERT_INTERVAL_MS
+        val assertRunnable = object : Runnable {
+            override fun run() {
+                if (!isSyntheticMotionActive) return
+                applySyntheticForDir(dir)
+                motionHandler.postDelayed(this, MOTION_ASSERT_INTERVAL_MS)
             }
         }
+        syntheticAssertRunnables[dir] = assertRunnable
+        // run immediately
+        motionHandler.post(assertRunnable)
+
+        // Schedule stop after pulse duration
+        motionHandler.postDelayed({ stopSyntheticMotion() }, MOTION_IMPULSE_MS)
     }
 
-    private fun stopMotionPulse(dir: MotionDir) {
-        motionRepeatRunnables[dir]?.let { motionHandler.removeCallbacks(it); motionRepeatRunnables.remove(dir) }
+    private fun stopSyntheticMotion() {
+        isSyntheticMotionActive = false
+        // remove all assertion runnables
+        syntheticAssertRunnables.values.forEach { motionHandler.removeCallbacks(it) }
+        syntheticAssertRunnables.clear()
+        // also remove repeating pulses
+        motionRepeatRunnables.values.forEach { motionHandler.removeCallbacks(it) }
+        motionRepeatRunnables.clear()
+        // clear motion fields once
         clearMotionFields()
     }
 
+    private fun applySyntheticForDir(dir: MotionDir) {
+        // Use safe, normalized magnitudes and assert them into ownControllerState repeatedly
+        when (dir) {
+            MotionDir.DOWN -> {
+                // assert both Y and Z accel negative, and both gyro X/Y positive
+                setMotionFields(0f, -IMPULSE_ACCEL_SAFE, -IMPULSE_ACCEL_SAFE, IMPULSE_GYRO_SAFE, IMPULSE_GYRO_SAFE, NEUTRAL_GYRO)
+            }
+            MotionDir.UP -> {
+                setMotionFields(0f, IMPULSE_ACCEL_SAFE, IMPULSE_ACCEL_SAFE, -IMPULSE_GYRO_SAFE, -IMPULSE_GYRO_SAFE, NEUTRAL_GYRO)
+            }
+            MotionDir.LEFT -> {
+                setMotionFields(-IMPULSE_ACCEL_SAFE, 0f, -IMPULSE_ACCEL_SAFE, NEUTRAL_GYRO, -IMPULSE_GYRO_SAFE, IMPULSE_GYRO_SAFE)
+            }
+            MotionDir.RIGHT -> {
+                setMotionFields(IMPULSE_ACCEL_SAFE, 0f, IMPULSE_ACCEL_SAFE, NEUTRAL_GYRO, IMPULSE_GYRO_SAFE, -IMPULSE_GYRO_SAFE)
+            }
+        }
+    }
+
     private fun setMotionFields(accelX: Float, accelY: Float, accelZ: Float, gyroX: Float, gyroY: Float, gyroZ: Float) {
+        // When synthetic motion is active, repeatedly set the controller state with these values so they are not overwritten by sensor updates
         ownControllerState = ownControllerState.copy().apply {
             this.accelX = accelX
             this.accelY = accelY
@@ -213,7 +228,14 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     }
 
     private fun clearMotionFields() {
-        setMotionFields(0f, 0f, 0f, 0f, 0f, 0f)
+        ownControllerState = ownControllerState.copy().apply {
+            accelX = 0f
+            accelY = 0f
+            accelZ = 0f
+            gyroX = 0f
+            gyroY = 0f
+            gyroZ = 0f
+        }
     }
 
     private fun dpadStateChanged(direction: DPadView.Direction?) {
