@@ -101,6 +101,65 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         binding.leftAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { leftX = quantizeStick(it.x); leftY = quantizeStick(it.y) } }
         binding.rightAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { rightX = quantizeStick(it.x); rightY = quantizeStick(it.y) } }
 
+        // Fire & Drag prototype wiring
+val FIRE_DEADZONE = 0.10f      // 10% deadzone
+val FIRE_SENSITIVITY = 0.004f  // pixel -> normalized multiplier; tune after testing
+
+binding.fireDragButton.setListener(object : FireDragView.Listener {
+    override fun onTap() {
+        // Single R2 pulse: set R2=255 briefly then release
+        ownControllerState = ownControllerState.copy().apply {
+            r2State = 255U
+            l2State = 0U
+            rightX = 0
+            rightY = 0
+        }
+        motionHandler.postDelayed({
+            ownControllerState = ownControllerState.copy().apply { r2State = 0U }
+        }, 80L)
+    }
+
+    override fun onHoldStart(startRawX: Float, startRawY: Float) {
+        // Press and hold both triggers
+        ownControllerState = ownControllerState.copy().apply {
+            l2State = 255U
+            r2State = 255U
+            rightX = 0
+            rightY = 0
+        }
+    }
+
+    override fun onDrag(dx: Float, dy: Float) {
+        // dx/dy are pixels relative to hold start; convert to normalized [-1..1]
+        fun toNormalized(delta: Float): Float {
+            var v = delta * FIRE_SENSITIVITY
+            if (kotlin.math.abs(v) < FIRE_DEADZONE) return 0f
+            val sign = if (v < 0f) -1f else 1f
+            val mag = (kotlin.math.abs(v) - FIRE_DEADZONE) / (1f - FIRE_DEADZONE)
+            v = sign * kotlin.math.min(1f, mag)
+            return v
+        }
+        val nx = toNormalized(dx)
+        val ny = toNormalized(dy)
+        ownControllerState = ownControllerState.copy().apply {
+            rightX = (Short.MAX_VALUE * nx).toInt().toShort()
+            rightY = (Short.MAX_VALUE * ny).toInt().toShort()
+            l2State = 255U
+            r2State = 255U
+        }
+    }
+
+    override fun onHoldEnd() {
+        // Immediately release triggers and center right stick
+        ownControllerState = ownControllerState.copy().apply {
+            l2State = 0U
+            r2State = 0U
+            rightX = 0
+            rightY = 0
+        }
+    }
+})
+
         // Motion buttons (ensure layout IDs present)
         setupMotionButton(binding.motionUpButton, MotionDir.UP, "motionUpButton")
         setupMotionButton(binding.motionDownButton, MotionDir.DOWN, "motionDownButton")
