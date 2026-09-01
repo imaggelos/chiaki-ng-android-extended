@@ -69,6 +69,18 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     private val NEUTRAL_GYRO = 0.0f
     private val NEUTRAL_ORIENT_W = 1.0f
 
+    // Fire & Drag constants (relative free-drag mapping)
+    private val FIRE_PIXELS_FOR_FULL_STICK = 80f
+    private val FIRE_SENSITIVITY = 1.0f
+    private val FIRE_PIXEL_DEADZONE = 1.0f
+    private val FIRE_SMOOTHING = 0.55f
+    private val INACTIVITY_TIMEOUT_MS = 30L // ~25-35ms
+
+    // smoothing state
+    private var smoothedX = 0f
+    private var smoothedY = 0f
+    private var inactivityRunnable: Runnable? = null
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         FragmentControlsBinding.inflate(inflater, container, false).let {
             _binding = it
@@ -101,64 +113,58 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         binding.leftAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { leftX = quantizeStick(it.x); leftY = quantizeStick(it.y) } }
         binding.rightAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { rightX = quantizeStick(it.x); rightY = quantizeStick(it.y) } }
 
-        // Fire & Drag prototype wiring
-val FIRE_DEADZONE = 0.10f      // 10% deadzone
-val FIRE_SENSITIVITY = 0.004f  // pixel -> normalized multiplier; tune after testing
+        // Fire & Drag prototype wiring (immediate free-drag, no tap/pulse)
+        binding.fireDragButton.setListener(object : FireDragView.Listener {
+            override fun onHoldStart(startRawX: Float, startRawY: Float) {
+                // Immediately press both triggers and center right stick
+                cancelInactivity()
+                smoothedX = 0f
+                smoothedY = 0f
+                ownControllerState = ownControllerState.copy().apply {
+                    l2State = 255U
+                    r2State = 255U
+                    rightX = 0
+                    rightY = 0
+                }
+            }
 
-binding.fireDragButton.setListener(object : FireDragView.Listener {
-    override fun onTap() {
-        // Single R2 pulse: set R2=255 briefly then release
-        ownControllerState = ownControllerState.copy().apply {
-            r2State = 255U
-            l2State = 0U
-            rightX = 0
-            rightY = 0
-        }
-        motionHandler.postDelayed({
-            ownControllerState = ownControllerState.copy().apply { r2State = 0U }
-        }, 80L)
-    }
+            override fun onDrag(dx: Float, dy: Float) {
+                // dx/dy are relative deltas since last move (free-drag)
+                val targetX = if (kotlin.math.abs(dx) <= FIRE_PIXEL_DEADZONE) 0f else ((dx / FIRE_PIXELS_FOR_FULL_STICK) * FIRE_SENSITIVITY).coerceIn(-1f, 1f)
+                val targetY = if (kotlin.math.abs(dy) <= FIRE_PIXEL_DEADZONE) 0f else ((dy / FIRE_PIXELS_FOR_FULL_STICK) * FIRE_SENSITIVITY).coerceIn(-1f, 1f)
 
-    override fun onHoldStart(startRawX: Float, startRawY: Float) {
-        // Press and hold both triggers
-        ownControllerState = ownControllerState.copy().apply {
-            l2State = 255U
-            r2State = 255U
-            rightX = 0
-            rightY = 0
-        }
-    }
+                // Apply smoothing (low-pass)
+                smoothedX += (targetX - smoothedX) * FIRE_SMOOTHING
+                smoothedY += (targetY - smoothedY) * FIRE_SMOOTHING
 
-    override fun onDrag(dx: Float, dy: Float) {
-        // dx/dy are pixels relative to hold start; convert to normalized [-1..1]
-        fun toNormalized(delta: Float): Float {
-            var v = delta * FIRE_SENSITIVITY
-            if (kotlin.math.abs(v) < FIRE_DEADZONE) return 0f
-            val sign = if (v < 0f) -1f else 1f
-            val mag = (kotlin.math.abs(v) - FIRE_DEADZONE) / (1f - FIRE_DEADZONE)
-            v = sign * kotlin.math.min(1f, mag)
-            return v
-        }
-        val nx = toNormalized(dx)
-        val ny = toNormalized(dy)
-        ownControllerState = ownControllerState.copy().apply {
-            rightX = (Short.MAX_VALUE * nx).toInt().toShort()
-            rightY = (Short.MAX_VALUE * ny).toInt().toShort()
-            l2State = 255U
-            r2State = 255U
-        }
-    }
+                val qx = (Short.MAX_VALUE * smoothedX).toInt().toShort()
+                val qy = (Short.MAX_VALUE * smoothedY).toInt().toShort()
 
-    override fun onHoldEnd() {
-        // Immediately release triggers and center right stick
-        ownControllerState = ownControllerState.copy().apply {
-            l2State = 0U
-            r2State = 0U
-            rightX = 0
-            rightY = 0
-        }
-    }
-})
+                ownControllerState = ownControllerState.copy().apply {
+                    rightX = qx
+                    rightY = qy
+                    // Keep triggers held
+                    l2State = 255U
+                    r2State = 255U
+                }
+
+                // Restart inactivity timeout so we return to neutral when finger stops
+                scheduleInactivityTimeout()
+            }
+
+            override fun onHoldEnd() {
+                // Finger lifted/cancelled: release triggers and center right stick
+                cancelInactivity()
+                smoothedX = 0f
+                smoothedY = 0f
+                ownControllerState = ownControllerState.copy().apply {
+                    l2State = 0U
+                    r2State = 0U
+                    rightX = 0
+                    rightY = 0
+                }
+            }
+        })
 
         // Motion buttons (ensure layout IDs present)
         setupMotionButton(binding.motionUpButton, MotionDir.UP, "motionUpButton")
@@ -174,12 +180,38 @@ binding.fireDragButton.setListener(object : FireDragView.Listener {
         })
     }
 
+    private fun scheduleInactivityTimeout() {
+        cancelInactivity()
+        inactivityRunnable = Runnable {
+            // finger stopped moving: return right stick to neutral and reset smoothing
+            smoothedX = 0f
+            smoothedY = 0f
+            ownControllerState = ownControllerState.copy().apply {
+                rightX = 0
+                rightY = 0
+            }
+        }
+        motionHandler.postDelayed(inactivityRunnable!!, INACTIVITY_TIMEOUT_MS)
+    }
+
+    private fun cancelInactivity() {
+        inactivityRunnable?.let { motionHandler.removeCallbacks(it) }
+        inactivityRunnable = null
+    }
+
+    override fun onDestroyView() {
+        // Ensure no stale timeout callbacks remain when fragment view is destroyed
+        cancelInactivity()
+        super.onDestroyView()
+    }
+
     private fun applySavedLayoutToViews() {
         val mapping = mapOf(
             "motionUpButton" to binding.motionUpButton,
             "motionDownButton" to binding.motionDownButton,
             "motionLeftButton" to binding.motionLeftButton,
-            "motionRightButton" to binding.motionRightButton
+            "motionRightButton" to binding.motionRightButton,
+            "fireDragButton" to binding.fireDragButton
         )
 
         mapping.forEach { (idStr, v) ->
