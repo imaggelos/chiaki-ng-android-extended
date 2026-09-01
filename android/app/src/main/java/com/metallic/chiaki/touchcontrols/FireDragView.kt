@@ -10,7 +10,6 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.abs
 
 class FireDragView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyle: Int = 0
@@ -99,7 +98,7 @@ class FireDragView @JvmOverloads constructor(
         val ahx = ax2
         val ahy = ay2
         val headLen = 10f * resources.displayMetrics.density
-        // two lines for head
+        // vector
         val vx = ax2 - ax1
         val vy = ay2 - ay1
         val vlen = kotlin.math.hypot(vx.toDouble(), vy.toDouble()).toFloat().coerceAtLeast(1f)
@@ -125,6 +124,8 @@ class FireDragView @JvmOverloads constructor(
                 isDown = true
                 lastRawX = ev.rawX
                 lastRawY = ev.rawY
+                // prevent parent from intercepting so touch stays captured even outside bounds
+                parent?.requestDisallowInterceptTouchEvent(true)
                 listener?.onHoldStart(lastRawX, lastRawY)
                 invalidate()
                 return true
@@ -142,6 +143,7 @@ class FireDragView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 isDown = false
+                parent?.requestDisallowInterceptTouchEvent(false)
                 listener?.onHoldEnd()
                 invalidate()
                 return true
