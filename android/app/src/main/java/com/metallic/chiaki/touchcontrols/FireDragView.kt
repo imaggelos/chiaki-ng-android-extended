@@ -1,178 +1,128 @@
-package com.metallic.chiaki.touchcontrols
-
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
-import android.os.Handler
-import android.os.Looper
-import android.util.AttributeSet
-import android.view.MotionEvent
-import android.view.View
-
-class FireDragView @JvmOverloads constructor(
-    context: Context, attrs: AttributeSet? = null, defStyle: Int = 0
-) : View(context, attrs, defStyle) {
-
-    interface Listener {
-        fun onHoldStart(startRawX: Float, startRawY: Float)
-        fun onDrag(dx: Float, dy: Float)
-        fun onHoldEnd()
-    }
-
-    private var listener: Listener? = null
-    fun setListener(l: Listener?) { listener = l }
-
-    // touch state
-    private var isDown = false
-    private var activePointerId = -1
-    private var lastRawX = 0f
-    private var lastRawY = 0f
-
-    // Simple visuals - translucent white styles
-    private val idleAlpha = (0.18f * 255).toInt()
-    private val pressedAlpha = (0.40f * 255).toInt()
-
-    private val bgPaint = Paint().apply {
-        style = Paint.Style.FILL
-        color = Color.argb(idleAlpha, 255, 255, 255)
-        isAntiAlias = true
-    }
-    private val pressedPaint = Paint().apply {
-        style = Paint.Style.FILL
-        color = Color.argb(pressedAlpha, 255, 255, 255)
-        isAntiAlias = true
-    }
-    private val borderPaint = Paint().apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 2f * resources.displayMetrics.density
-        color = Color.argb((0.35f * 255).toInt(), 255, 255, 255)
-        isAntiAlias = true
-    }
-    private val iconPaint = Paint().apply {
-        style = Paint.Style.FILL
-        color = Color.argb(255, 255, 255, 255)
-        isAntiAlias = true
-    }
-    private val iconStroke = Paint().apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 2f * resources.displayMetrics.density
-        color = Color.argb(200, 255, 255, 255)
-        isAntiAlias = true
-    }
-
-    private val flamePath = Path()
-    private val arrowPath = Path()
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val paint = if (isDown) pressedPaint else bgPaint
-        val r = (width.coerceAtMost(height) / 2f)
-        val cx = width / 2f
-        val cy = height / 2f
-        canvas.drawCircle(cx, cy, r, paint)
-        canvas.drawCircle(cx, cy, r, borderPaint)
-
-        // Draw a simple stylized flame - centered inside circle
-        flamePath.reset()
-        val fw = width * 0.36f
-        val fh = height * 0.44f
-        flamePath.moveTo(cx, cy - fh * 0.5f)
-        flamePath.cubicTo(cx - fw * 0.8f, cy - fh * 0.2f, cx - fw * 0.4f, cy + fh * 0.45f, cx, cy + fh * 0.5f)
-        flamePath.cubicTo(cx + fw * 0.4f, cy + fh * 0.45f, cx + fw * 0.8f, cy - fh * 0.2f, cx, cy - fh * 0.5f)
-        flamePath.close()
-        canvas.drawPath(flamePath, iconPaint)
-
-        // Draw diagonal arrow (up-right) overlaying the flame
-        arrowPath.reset()
-        val ax1 = cx - fw * 0.25f
-        val ay1 = cy + fh * 0.2f
-        val ax2 = cx + fw * 0.45f
-        val ay2 = cy - fh * 0.45f
-        arrowPath.moveTo(ax1, ay1)
-        arrowPath.lineTo(ax2, ay2)
-        val ahx = ax2
-        val ahy = ay2
-        val headLen = 10f * resources.displayMetrics.density
-        val vx = ax2 - ax1
-        val vy = ay2 - ay1
-        val vlen = kotlin.math.hypot(vx.toDouble(), vy.toDouble()).toFloat().coerceAtLeast(1f)
-        val nx = vx / vlen
-        val ny = vy / vlen
-        val cos30 = 0.8660254f
-        val sin30 = 0.5f
-        val rx1 = cos30 * nx - sin30 * ny
-        val ry1 = sin30 * nx + cos30 * ny
-        val rx2 = cos30 * nx + sin30 * ny
-        val ry2 = -sin30 * nx + cos30 * ny
-        arrowPath.moveTo(ahx, ahy)
-        arrowPath.lineTo(ahx - rx1 * headLen, ahy - ry1 * headLen)
-        arrowPath.moveTo(ahx, ahy)
-        arrowPath.lineTo(ahx - rx2 * headLen, ahy - ry2 * headLen)
-        canvas.drawPath(arrowPath, iconStroke)
-    }
-
-    override fun onTouchEvent(ev: MotionEvent): Boolean {
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
-                isDown = true
-                activePointerId = ev.getPointerId(0)
-                // use raw coordinates based on view location + local coords to support pointer index
-                val loc = IntArray(2)
-                getLocationOnScreen(loc)
-                lastRawX = ev.getX(0) + loc[0]
-                lastRawY = ev.getY(0) + loc[1]
-                listener?.onHoldStart(lastRawX, lastRawY)
-                invalidate()
-                return true
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                // ignore additional pointers
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!isDown) return true
-                val idx = ev.findPointerIndex(activePointerId)
-                if (idx == -1) return true
-                val loc = IntArray(2)
-                getLocationOnScreen(loc)
-                val curRawX = ev.getX(idx) + loc[0]
-                val curRawY = ev.getY(idx) + loc[1]
-                val dx = curRawX - lastRawX
-                val dy = curRawY - lastRawY
-                lastRawX = curRawX
-                lastRawY = curRawY
-
-                // Move the view by the same delta in parent coordinates so it follows the finger.
-                // No clamping, no saving to prefs, no snap-back.
-                this.x = this.x + dx
-                this.y = this.y + dy
-
-                listener?.onDrag(dx, dy)
-                invalidate()
-                return true
-            }
-            MotionEvent.ACTION_POINTER_UP -> {
-                val pid = ev.getPointerId(ev.actionIndex)
-                if (pid == activePointerId) {
-                    isDown = false
-                    activePointerId = -1
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                    listener?.onHoldEnd()
-                }
-                return true
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                isDown = false
-                activePointerId = -1
-                parent?.requestDisallowInterceptTouchEvent(false)
-                listener?.onHoldEnd()
-                invalidate()
-                return true
-            }
-        }
-        return super.onTouchEvent(ev)
-    }
-}
+*** Begin Patch
+*** Update File: android/app/src/main/java/com/metallic/chiaki/touchcontrols/FireDragView.kt
+@@
+-import android.os.Handler
+-import android.os.Looper
++import android.os.Handler
++import android.os.Looper
++import android.view.ViewConfiguration
+@@
+     private val borderPaint = Paint().apply {
+         style = Paint.Style.STROKE
+         strokeWidth = 2f * resources.displayMetrics.density
+         color = Color.argb((0.35f * 255).toInt(), 255, 255, 255)
+         isAntiAlias = true
+     }
+     private val iconPaint = Paint().apply {
+         style = Paint.Style.FILL
+         color = Color.WHITE
+         isAntiAlias = true
+     }
+     private val flamePath = Path()
+     private val arrowPath = Path()
+@@
+     override fun onDraw(canvas: Canvas) {
+         super.onDraw(canvas)
+         val paint = if (isDown) pressedPaint else bgPaint
+         // background
+         canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), 12f * resources.displayMetrics.density, 12f * resources.displayMetrics.density, paint)
+         // border
+         canvas.drawRoundRect(1f, 1f, width.toFloat()-1f, height.toFloat()-1f, 12f * resources.displayMetrics.density, 12f * resources.displayMetrics.density, borderPaint)
+         // icon: stylized flame + diagonal arrow
+         val cx = width / 2f
+         val cy = height / 2f
+         val s = Math.min(width, height) / 3f
+         // flame
+         flamePath.reset()
+         flamePath.moveTo(cx, cy - s * 0.6f)
+         flamePath.quadTo(cx + s*0.35f, cy - s*0.9f, cx + s*0.25f, cy - s*0.1f)
+         flamePath.quadTo(cx + s*0.15f, cy + s*0.25f, cx, cy + s*0.4f)
+         flamePath.quadTo(cx - s*0.15f, cy + s*0.25f, cx - s*0.25f, cy - s*0.1f)
+         flamePath.quadTo(cx - s*0.35f, cy - s*0.9f, cx, cy - s*0.6f)
+         flamePath.close()
+         canvas.drawPath(flamePath, iconPaint)
+         // diagonal arrow
+         arrowPath.reset()
+         val ax = cx + s*0.45f
+         val ay = cy - s*0.45f
+         arrowPath.moveTo(ax - s*0.5f, ay + s*0.5f)
+         arrowPath.lineTo(ax + s*0.2f, ay + s*0.5f)
+         arrowPath.lineTo(ax + s*0.2f, ay + s*0.2f)
+         arrowPath.lineTo(ax + s*0.7f, ay - s*0.3f)
+         arrowPath.lineTo(ax + s*0.4f, ay - s*0.3f)
+         arrowPath.lineTo(ax + s*0.4f, ay - s*0.6f)
+         arrowPath.close()
+         canvas.drawPath(arrowPath, iconPaint)
+     }
+@@
+     override fun onTouchEvent(ev: MotionEvent): Boolean {
+         when (ev.actionMasked) {
+             MotionEvent.ACTION_DOWN -> {
+-                isDown = true
+-                isHolding = false
+-                downRawX = ev.rawX
+-                downRawY = ev.rawY
+-                handler.postDelayed(holdRunnable, holdMs)
+-                invalidate()
+-                return true
++                // start tracking active pointer
++                isDown = true
++                activePointerId = ev.getPointerId(0)
++                lastRawX = ev.rawX
++                lastRawY = ev.rawY
++                // Immediately notify fragment that hold/aim started
++                listener?.onHoldStart(lastRawX, lastRawY)
++                invalidate()
++                return true
+             }
+             MotionEvent.ACTION_MOVE -> {
+-                if (isHolding) {
+-                    // compute delta relative to hold start
+-                    val dx = ev.rawX - downRawX
+-                    val dy = ev.rawY - downRawY
+-                    listener?.onDrag(dx, dy)
+-                }
+-                return true
++                if (!isDown) return true
++                // find index for active pointer
++                val pid = activePointerId
++                val idx = ev.findPointerIndex(pid)
++                if (idx < 0) return true
++                val curRawX = ev.getX(idx) + ev.rawX - ev.x // normalize to rawX
++                val curRawY = ev.getY(idx) + ev.rawY - ev.y
++                val dx = curRawX - lastRawX
++                val dy = curRawY - lastRawY
++                lastRawX = curRawX
++                lastRawY = curRawY
++                // physically move the view by same delta
++                x = x + dx
++                y = y + dy
++                // inform listener with raw delta
++                listener?.onDrag(dx, dy)
++                return true
+             }
+             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+-                handler.removeCallbacks(holdRunnable)
+-                if (!isHolding) {
+-                    // TAP: user released before hold timer -> trigger tap
+-                    listener?.onTap()
+-                } else {
+-                    // ended a hold/drag
+-                    listener?.onHoldEnd()
+-                }
+-                isDown = false
+-                isHolding = false
+-                invalidate()
+-                return true
++                // stop tracking, leave view where dragged
++                activePointerId = -1
++                isDown = false
++                listener?.onHoldEnd()
++                invalidate()
++                return true
+             }
+         }
+         return super.onTouchEvent(ev)
+     }
+ }
+*** End Patch
