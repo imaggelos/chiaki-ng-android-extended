@@ -5,6 +5,7 @@ package com.metallic.chiaki.touchcontrols
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -69,17 +70,22 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     private val NEUTRAL_GYRO = 0.0f
     private val NEUTRAL_ORIENT_W = 1.0f
 
-    // Fire & Drag constants (relative free-drag mapping)
-    private val FIRE_PIXELS_FOR_FULL_STICK = 80f
-    private val FIRE_SENSITIVITY = 1.0f
-    private val FIRE_PIXEL_DEADZONE = 1.0f
-    private val FIRE_SMOOTHING = 0.55f
-    private val INACTIVITY_TIMEOUT_MS = 30L // ~25-35ms
+    // Fire & Drag - continuous free-drag camera control parameters
+    private val FIRE_AIM_SENSITIVITY = 4.0f
+    private val PUBLISH_INTERVAL_MS = 12L
+    private val INACTIVITY_TIMEOUT_MS = 30L
 
-    // smoothing state
-    private var smoothedX = 0f
-    private var smoothedY = 0f
-    private var inactivityRunnable: Runnable? = null
+    // latest relative movement from FireDragView (not accumulated)
+    @Volatile
+    private var latestDx = 0f
+    @Volatile
+    private var latestDy = 0f
+    @Volatile
+    private var lastMoveTime = 0L
+    @Volatile
+    private var isAimActive = false
+
+    private var publisherRunnable: Runnable? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         FragmentControlsBinding.inflate(inflater, container, false).let {
@@ -113,50 +119,56 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         binding.leftAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { leftX = quantizeStick(it.x); leftY = quantizeStick(it.y) } }
         binding.rightAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { rightX = quantizeStick(it.x); rightY = quantizeStick(it.y) } }
 
-        // Fire & Drag prototype wiring (immediate free-drag, no tap/pulse)
+        // Fire & Drag continuous free-drag implementation
+        // Ensure the view is added to applySavedLayoutToViews mapping (handled below)
         binding.fireDragButton.setListener(object : FireDragView.Listener {
             override fun onHoldStart(startRawX: Float, startRawY: Float) {
-                // Immediately press both triggers and center right stick
-                cancelInactivity()
-                smoothedX = 0f
-                smoothedY = 0f
+                // Begin aim gesture: hold triggers and start publisher
+                latestDx = 0f
+                latestDy = 0f
+                lastMoveTime = 0L
+                isAimActive = true
+
+                // Immediately press triggers and center right stick
                 ownControllerState = ownControllerState.copy().apply {
                     l2State = 255U
                     r2State = 255U
                     rightX = 0
                     rightY = 0
                 }
+
+                startPublisher()
             }
 
             override fun onDrag(dx: Float, dy: Float) {
-                // dx/dy are relative deltas since last move (free-drag)
-                val targetX = if (kotlin.math.abs(dx) <= FIRE_PIXEL_DEADZONE) 0f else ((dx / FIRE_PIXELS_FOR_FULL_STICK) * FIRE_SENSITIVITY).coerceIn(-1f, 1f)
-                val targetY = if (kotlin.math.abs(dy) <= FIRE_PIXEL_DEADZONE) 0f else ((dy / FIRE_PIXELS_FOR_FULL_STICK) * FIRE_SENSITIVITY).coerceIn(-1f, 1f)
+                if (!isAimActive) return
+                // dx/dy are relative deltas (raw) from FireDragView
+                latestDx = dx
+                latestDy = dy
+                lastMoveTime = SystemClock.uptimeMillis()
 
-                // Apply smoothing (low-pass)
-                smoothedX += (targetX - smoothedX) * FIRE_SMOOTHING
-                smoothedY += (targetY - smoothedY) * FIRE_SMOOTHING
-
-                val qx = (Short.MAX_VALUE * smoothedX).toInt().toShort()
-                val qy = (Short.MAX_VALUE * smoothedY).toInt().toShort()
+                // Immediately publish this movement
+                val normX = ((latestDx / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
+                val normY = ((latestDy / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
+                val qx = (Short.MAX_VALUE * normX).toInt().toShort()
+                val qy = (Short.MAX_VALUE * normY).toInt().toShort()
 
                 ownControllerState = ownControllerState.copy().apply {
                     rightX = qx
                     rightY = qy
-                    // Keep triggers held
                     l2State = 255U
                     r2State = 255U
                 }
-
-                // Restart inactivity timeout so we return to neutral when finger stops
-                scheduleInactivityTimeout()
             }
 
             override fun onHoldEnd() {
-                // Finger lifted/cancelled: release triggers and center right stick
-                cancelInactivity()
-                smoothedX = 0f
-                smoothedY = 0f
+                // End aim gesture: stop publisher and release triggers/stick
+                isAimActive = false
+                cancelPublisher()
+                latestDx = 0f
+                latestDy = 0f
+                lastMoveTime = 0L
+
                 ownControllerState = ownControllerState.copy().apply {
                     l2State = 0U
                     r2State = 0U
@@ -180,28 +192,47 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         })
     }
 
-    private fun scheduleInactivityTimeout() {
-        cancelInactivity()
-        inactivityRunnable = Runnable {
-            // finger stopped moving: return right stick to neutral and reset smoothing
-            smoothedX = 0f
-            smoothedY = 0f
-            ownControllerState = ownControllerState.copy().apply {
-                rightX = 0
-                rightY = 0
+    private fun startPublisher() {
+        if (publisherRunnable != null) return
+        publisherRunnable = object : Runnable {
+            override fun run() {
+                if (!isAimActive) return
+                val now = SystemClock.uptimeMillis()
+                val age = if (lastMoveTime == 0L) Long.MAX_VALUE else (now - lastMoveTime)
+                if (age > INACTIVITY_TIMEOUT_MS) {
+                    // publish neutral stick while keeping triggers pressed
+                    ownControllerState = ownControllerState.copy().apply {
+                        rightX = 0
+                        rightY = 0
+                        l2State = 255U
+                        r2State = 255U
+                    }
+                } else {
+                    val tx = ((latestDx / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
+                    val ty = ((latestDy / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
+                    val qx = (Short.MAX_VALUE * tx).toInt().toShort()
+                    val qy = (Short.MAX_VALUE * ty).toInt().toShort()
+                    ownControllerState = ownControllerState.copy().apply {
+                        rightX = qx
+                        rightY = qy
+                        l2State = 255U
+                        r2State = 255U
+                    }
+                }
+                motionHandler.postDelayed(this, PUBLISH_INTERVAL_MS)
             }
         }
-        motionHandler.postDelayed(inactivityRunnable!!, INACTIVITY_TIMEOUT_MS)
+        motionHandler.post(publisherRunnable!!)
     }
 
-    private fun cancelInactivity() {
-        inactivityRunnable?.let { motionHandler.removeCallbacks(it) }
-        inactivityRunnable = null
+    private fun cancelPublisher() {
+        publisherRunnable?.let { motionHandler.removeCallbacks(it) }
+        publisherRunnable = null
     }
 
     override fun onDestroyView() {
-        // Ensure no stale timeout callbacks remain when fragment view is destroyed
-        cancelInactivity()
+        // Ensure no stale callbacks remain
+        cancelPublisher()
         super.onDestroyView()
     }
 
