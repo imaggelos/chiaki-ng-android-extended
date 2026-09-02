@@ -70,16 +70,16 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     private val NEUTRAL_GYRO = 0.0f
     private val NEUTRAL_ORIENT_W = 1.0f
 
-    // Fire & Drag - continuous free-drag camera control parameters
-    private val FIRE_AIM_SENSITIVITY = 4.0f
-    private val PUBLISH_INTERVAL_MS = 12L
+    // Fire & Drag - continuous velocity/accumulator aiming model
+    private val FIRE_AIM_SENSITIVITY = 0.015f
+    private val PUBLISH_INTERVAL_MS = 8L
     private val INACTIVITY_TIMEOUT_MS = 30L
 
-    // latest relative movement from FireDragView (not accumulated)
+    // aim velocity state (accumulator, clamped to [-1, 1])
     @Volatile
-    private var latestDx = 0f
+    private var aimX = 0f
     @Volatile
-    private var latestDy = 0f
+    private var aimY = 0f
     @Volatile
     private var lastMoveTime = 0L
     @Volatile
@@ -119,17 +119,16 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
         binding.leftAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { leftX = quantizeStick(it.x); leftY = quantizeStick(it.y) } }
         binding.rightAnalogStickView.stateChangedCallback = { ownControllerState = ownControllerState.copy().apply { rightX = quantizeStick(it.x); rightY = quantizeStick(it.y) } }
 
-        // Fire & Drag continuous free-drag implementation
-        // Ensure the view is added to applySavedLayoutToViews mapping (handled below)
+        // Fire & Drag continuous free-drag implementation (velocity accumulator)
         binding.fireDragButton.setListener(object : FireDragView.Listener {
             override fun onHoldStart(startRawX: Float, startRawY: Float) {
-                // Begin aim gesture: hold triggers and start publisher
-                latestDx = 0f
-                latestDy = 0f
+                // Start aim gesture
+                aimX = 0f
+                aimY = 0f
                 lastMoveTime = 0L
                 isAimActive = true
 
-                // Immediately press triggers and center right stick
+                // Immediately hold triggers and center stick
                 ownControllerState = ownControllerState.copy().apply {
                     l2State = 255U
                     r2State = 255U
@@ -142,31 +141,22 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
 
             override fun onDrag(dx: Float, dy: Float) {
                 if (!isAimActive) return
-                // dx/dy are relative deltas (raw) from FireDragView
-                latestDx = dx
-                latestDy = dy
+                // Accumulate velocity from relative raw deltas
+                aimX += dx * FIRE_AIM_SENSITIVITY
+                aimY += dy * FIRE_AIM_SENSITIVITY
+                // Clamp
+                aimX = aimX.coerceIn(-1f, 1f)
+                aimY = aimY.coerceIn(-1f, 1f)
                 lastMoveTime = SystemClock.uptimeMillis()
-
-                // Immediately publish this movement
-                val normX = ((latestDx / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
-                val normY = ((latestDy / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
-                val qx = (Short.MAX_VALUE * normX).toInt().toShort()
-                val qy = (Short.MAX_VALUE * normY).toInt().toShort()
-
-                ownControllerState = ownControllerState.copy().apply {
-                    rightX = qx
-                    rightY = qy
-                    l2State = 255U
-                    r2State = 255U
-                }
+                // Do NOT publish here; publisherRunnable is responsible for continuous publishing
             }
 
             override fun onHoldEnd() {
-                // End aim gesture: stop publisher and release triggers/stick
+                // End aim gesture
                 isAimActive = false
                 cancelPublisher()
-                latestDx = 0f
-                latestDy = 0f
+                aimX = 0f
+                aimY = 0f
                 lastMoveTime = 0L
 
                 ownControllerState = ownControllerState.copy().apply {
@@ -200,7 +190,11 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
                 val now = SystemClock.uptimeMillis()
                 val age = if (lastMoveTime == 0L) Long.MAX_VALUE else (now - lastMoveTime)
                 if (age > INACTIVITY_TIMEOUT_MS) {
-                    // publish neutral stick while keeping triggers pressed
+                    // No recent movement: neutralize aim but keep triggers held
+                    if (aimX != 0f || aimY != 0f) {
+                        aimX = 0f
+                        aimY = 0f
+                    }
                     ownControllerState = ownControllerState.copy().apply {
                         rightX = 0
                         rightY = 0
@@ -208,10 +202,9 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
                         r2State = 255U
                     }
                 } else {
-                    val tx = ((latestDx / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
-                    val ty = ((latestDy / 10f) * FIRE_AIM_SENSITIVITY).coerceIn(-1f, 1f)
-                    val qx = (Short.MAX_VALUE * tx).toInt().toShort()
-                    val qy = (Short.MAX_VALUE * ty).toInt().toShort()
+                    // Publish current accumulated aim velocity
+                    val qx = (Short.MAX_VALUE * aimX).toInt().toShort()
+                    val qy = (Short.MAX_VALUE * aimY).toInt().toShort()
                     ownControllerState = ownControllerState.copy().apply {
                         rightX = qx
                         rightY = qy
