@@ -144,7 +144,14 @@ class FireDragView @JvmOverloads constructor(
                 val dy = curRawY - lastRawY
                 lastRawX = curRawX
                 lastRawY = curRawY
+
+                // Move the view by the same delta in parent coordinates so it follows the finger.
+                // No clamping, no saving to prefs, no snap-back.
+                this.x = this.x + dx
+                this.y = this.y + dy
+
                 listener?.onDrag(dx, dy)
+                invalidate()
                 return true
             }
             MotionEvent.ACTION_POINTER_UP -> {
