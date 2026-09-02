@@ -1,175 +1,24 @@
-<?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    xmlns:android="http://schemas.android.com/apk/res/android">
-    <PreferenceCategory
-        app:key="category_general"
-        app:title="@string/preferences_category_title_general">
-        <Preference
-            app:key="registered_hosts"
-            tools:summary="@string/preferences_registered_hosts_summary"
-            app:summary=" "
-            app:title="@string/preferences_registered_hosts_title"
-            app:fragment="com.metallic.chiaki.settings.SettingsRegisteredHostsFragment"
-            app:icon="@drawable/ic_console_simple"/>
-
-        <Preference
-            android:key="pref_edit_touch_layout"
-            android:title="Edit Touch Layout"
-            android:summary="Move and toggle on-screen buttons; positions are saved" />
-
-        <SwitchPreference
-            app:key="@string/preferences_swap_cross_moon_key"
-            app:title="@string/preferences_swap_cross_moon_title"
-            app:summary="@string/preferences_swap_cross_moon_summary"
-            app:icon="@drawable/ic_gamepad" />
-
-        <SwitchPreference
-            app:key="@string/preferences_rumble_enabled_key"
-            app:title="@string/preferences_rumble_enabled_title"
-            app:summary="@string/preferences_rumble_enabled_summary"
-            app:icon="@drawable/ic_rumble" />
-
-        <SwitchPreference
-            app:key="preferences_touchscreen_touchpad_enabled"
-            app:title="Touchscreen as Touchpad"
-            app:summary="Use the stream area as a touchpad"
-            app:defaultValue="false"
-            app:icon="@drawable/ic_gamepad" />
-
-        <SwitchPreference
-            app:key="@string/preferences_motion_enabled_key"
-            app:title="@string/preferences_motion_enabled_title"
-            app:summary="@string/preferences_motion_enabled_summary"
-            app:icon="@drawable/ic_motion" />
-
-        <SwitchPreference
-            app:key="@string/preferences_button_haptic_enabled_key"
-            app:title="@string/preferences_button_haptic_enabled_title"
-            app:summary="@string/preferences_button_haptic_enabled_summary"
-            app:icon="@drawable/ic_button_haptic" />
-
-        <SwitchPreference
-            app:key="@string/preferences_log_verbose_key"
-            app:title="@string/preferences_log_verbose_title"
-            app:summary="@string/preferences_log_verbose_summary"
-            app:icon="@drawable/ic_log" />
-
-        <Preference
-            app:key="logs"
-            app:summary="@string/preferences_logs_summary"
-            app:title="@string/preferences_logs_title"
-            app:fragment="com.metallic.chiaki.settings.SettingsLogsFragment"
-            app:icon="@drawable/ic_log"/>
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        app:key="category_stream"
-        app:title="@string/preferences_category_title_stream">
-        <ListPreference
-            app:key="@string/preferences_resolution_key"
-            app:title="@string/preferences_resolution_title"
-            app:summary="%s"
-            app:icon="@drawable/ic_resolution"/>
-
-        <ListPreference
-            app:key="@string/preferences_fps_key"
-            app:title="@string/preferences_fps_title"
-            app:summary="%s"
-            app:icon="@drawable/ic_fps"/>
-
-        <EditTextPreference
-            app:key="@string/preferences_bitrate_key"
-            app:title="@string/preferences_bitrate_title"
-            app:icon="@drawable/ic_bitrate"/>
-
-        <ListPreference
-            app:key="@string/preferences_codec_key"
-            app:title="@string/preferences_codec_title"
-            app:summary="%s"
-            app:icon="@drawable/ic_codec"/>
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        app:key="category_mapping"
-        app:title="Controller Mapping">
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_cross"
-            app:title="Cross (Select)"
-            app:defaultValue="96" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_circle"
-            app:title="Circle (Back)"
-            app:defaultValue="97" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_square"
-            app:title="Square"
-            app:defaultValue="99" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_triangle"
-            app:title="Triangle"
-            app:defaultValue="100" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_l1"
-            app:title="L1 (Left Bumper)"
-            app:defaultValue="102" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_r1"
-            app:title="R1 (Right Bumper)"
-            app:defaultValue="103" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_l2"
-            app:title="L2 (Left Trigger)"
-            app:defaultValue="104" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_r2"
-            app:title="R2 (Right Trigger)"
-            app:defaultValue="105" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_l3"
-            app:title="L3 (Left Stick Click)"
-            app:defaultValue="106" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_r3"
-            app:title="R3 (Right Stick Click)"
-            app:defaultValue="107" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_options"
-            app:title="Options (Start)"
-            app:defaultValue="108" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_share"
-            app:title="Share (Select)"
-            app:defaultValue="109" />
-        <com.metallic.chiaki.settings.KeyMappingPreference
-            app:key="mapping_ps"
-            app:title="PS Button"
-            app:defaultValue="110" />
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        app:key="category_video_deband"
-        app:title="Post-processing">
-        <SwitchPreference
-            app:key="@string/preferences_debanding_key"
-            app:title="@string/preferences_debanding_title"
-            app:summary="@string/preferences_debanding_summary"
-            app:icon="@drawable/ic_resolution" />
-    </PreferenceCategory>
-
-    <PreferenceCategory
-        app:key="category_export"
-        app:title="@string/preferences_category_title_export">
-        <Preference
-            app:key="@string/preferences_export_settings_key"
-            app:summary="@string/preferences_export_settings_summary"
-            app:title="@string/preferences_export_settings_title"
-            app:icon="@drawable/ic_export"/>
-
-        <Preference
-            app:key="@string/preferences_import_settings_key"
-            app:summary="@string/preferences_import_settings_summary"
-            app:title="@string/preferences_import_settings_title"
-            app:icon="@drawable/ic_import"/>
-    </PreferenceCategory>
-</PreferenceScreen>
+*** Begin Patch
+*** Update File: android/app/src/main/res/xml/preferences.xml
+@@
+     <PreferenceCategory
+         app:key="category_stream"
+         app:title="@string/preferences_category_title_stream">
+@@
+         <ListPreference
+             app:key="@string/preferences_codec_key"
+             app:title="@string/preferences_codec_title"
+             app:summary="%s"
+             app:icon="@drawable/ic_codec"/>
++
++        <!-- Fire & Drag sensitivity: stored as integer 5..50 representing 0.005..0.050 -->
++        <SeekBarPreference
++            app:key="preferences_fire_drag_sensitivity"
++            app:title="@string/preferences_fire_drag_sensitivity_title"
++            app:defaultValue="15"
++            app:min="5"
++            app:max="50"
++            app:showSeekBarValue="true"
++            app:icon="@drawable/ic_sensitivity" />
+     </PreferenceCategory>
+*** End Patch
