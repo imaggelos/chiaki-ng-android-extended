@@ -26,6 +26,7 @@ class FireDragView @JvmOverloads constructor(
 
     // touch state
     private var isDown = false
+    private var activePointerId = -1
     private var lastRawX = 0f
     private var lastRawY = 0f
 
@@ -67,21 +68,18 @@ class FireDragView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val paint = if (isDown) pressedPaint else bgPaint
-        val r = 14f * resources.displayMetrics.density
-        canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), r, r, paint)
-        canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), r, r, borderPaint)
-
-        // Draw a simple stylized flame - centered
-        flamePath.reset()
+        val r = (width.coerceAtMost(height) / 2f)
         val cx = width / 2f
         val cy = height / 2f
+        canvas.drawCircle(cx, cy, r, paint)
+        canvas.drawCircle(cx, cy, r, borderPaint)
+
+        // Draw a simple stylized flame - centered inside circle
+        flamePath.reset()
         val fw = width * 0.36f
         val fh = height * 0.44f
-        // tip
         flamePath.moveTo(cx, cy - fh * 0.5f)
-        // left curve
         flamePath.cubicTo(cx - fw * 0.8f, cy - fh * 0.2f, cx - fw * 0.4f, cy + fh * 0.45f, cx, cy + fh * 0.5f)
-        // right curve
         flamePath.cubicTo(cx + fw * 0.4f, cy + fh * 0.45f, cx + fw * 0.8f, cy - fh * 0.2f, cx, cy - fh * 0.5f)
         flamePath.close()
         canvas.drawPath(flamePath, iconPaint)
@@ -94,17 +92,14 @@ class FireDragView @JvmOverloads constructor(
         val ay2 = cy - fh * 0.45f
         arrowPath.moveTo(ax1, ay1)
         arrowPath.lineTo(ax2, ay2)
-        // arrow head
         val ahx = ax2
         val ahy = ay2
         val headLen = 10f * resources.displayMetrics.density
-        // vector
         val vx = ax2 - ax1
         val vy = ay2 - ay1
         val vlen = kotlin.math.hypot(vx.toDouble(), vy.toDouble()).toFloat().coerceAtLeast(1f)
         val nx = vx / vlen
         val ny = vy / vlen
-        // rotate +/- 30 degrees
         val cos30 = 0.8660254f
         val sin30 = 0.5f
         val rx1 = cos30 * nx - sin30 * ny
@@ -121,28 +116,50 @@ class FireDragView @JvmOverloads constructor(
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                isDown = true
-                lastRawX = ev.rawX
-                lastRawY = ev.rawY
-                // prevent parent from intercepting so touch stays captured even outside bounds
                 parent?.requestDisallowInterceptTouchEvent(true)
+                isDown = true
+                activePointerId = ev.getPointerId(0)
+                // use raw coordinates based on view location + local coords to support pointer index
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                lastRawX = ev.getX(0) + loc[0]
+                lastRawY = ev.getY(0) + loc[1]
                 listener?.onHoldStart(lastRawX, lastRawY)
                 invalidate()
                 return true
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // ignore additional pointers
+                return true
+            }
             MotionEvent.ACTION_MOVE -> {
                 if (!isDown) return true
-                val curX = ev.rawX
-                val curY = ev.rawY
-                val dx = curX - lastRawX
-                val dy = curY - lastRawY
-                lastRawX = curX
-                lastRawY = curY
+                val idx = ev.findPointerIndex(activePointerId)
+                if (idx == -1) return true
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                val curRawX = ev.getX(idx) + loc[0]
+                val curRawY = ev.getY(idx) + loc[1]
+                val dx = curRawX - lastRawX
+                val dy = curRawY - lastRawY
+                lastRawX = curRawX
+                lastRawY = curRawY
                 listener?.onDrag(dx, dy)
+                return true
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                val pid = ev.getPointerId(ev.actionIndex)
+                if (pid == activePointerId) {
+                    isDown = false
+                    activePointerId = -1
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    listener?.onHoldEnd()
+                }
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 isDown = false
+                activePointerId = -1
                 parent?.requestDisallowInterceptTouchEvent(false)
                 listener?.onHoldEnd()
                 invalidate()
