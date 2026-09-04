@@ -243,4 +243,85 @@
         app:layout_constraintRight_toLeftOf="@id/r2ButtonView"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Motion control buttons: visible, elevated, and constrained within the screen -->
+    <Button
+        android:id="@+id/motionUpButton"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:text="↑"
+        android:backgroundTint="@android:color/holo_blue_light"
+        android:textColor="@android:color/white"
+        android:elevation="12dp"
+        android:translationZ="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        android:layout_marginTop="120dp" />
+
+    <Button
+        android:id="@+id/motionDownButton"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:text="↓"
+        android:backgroundTint="@android:color/holo_blue_light"
+        android:textColor="@android:color/white"
+        android:elevation="12dp"
+        android:translationZ="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
+        app:layout_constraintTop_toBottomOf="@id/touchpadView"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        android:layout_marginTop="16dp" />
+
+    <Button
+        android:id="@+id/motionLeftButton"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:text="←"
+        android:backgroundTint="@android:color/holo_blue_light"
+        android:textColor="@android:color/white"
+        android:elevation="12dp"
+        android:translationZ="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
+        app:layout_constraintTop_toBottomOf="@id/touchpadView"
+        app:layout_constraintLeft_toLeftOf="parent"
+        android:layout_marginLeft="40dp"
+        android:layout_marginTop="16dp" />
+
+    <Button
+        android:id="@+id/motionRightButton"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:text="→"
+        android:backgroundTint="@android:color/holo_blue_light"
+        android:textColor="@android:color/white"
+        android:elevation="12dp"
+        android:translationZ="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
+        app:layout_constraintTop_toBottomOf="@id/touchpadView"
+        app:layout_constraintRight_toRightOf="parent"
+        android:layout_marginRight="40dp"
+        android:layout_marginTop="16dp" />
+
+    <!-- Fire & Drag prototype control -->
+    <com.metallic.chiaki.touchcontrols.FireDragView
+        android:id="@+id/fireDragButton"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_marginRight="24dp"
+        android:layout_marginBottom="140dp"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

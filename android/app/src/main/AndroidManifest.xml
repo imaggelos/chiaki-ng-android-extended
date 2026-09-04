@@ -46,6 +46,9 @@
         <activity
             android:name=".settings.SettingsActivity" />
 
+        <!-- Touch layout editor activity -->
+        <activity android:name=".settings.TouchLayoutEditorActivity" />
+
         <activity
             android:name=".regist.RegistActivity"
             android:theme="@style/MageTheme"
