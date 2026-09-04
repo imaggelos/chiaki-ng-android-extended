@@ -13,6 +13,11 @@
             app:fragment="com.metallic.chiaki.settings.SettingsRegisteredHostsFragment"
             app:icon="@drawable/ic_console_simple"/>
 
+        <Preference
+            android:key="pref_edit_touch_layout"
+            android:title="Edit Touch Layout"
+            android:summary="Move and toggle on-screen buttons; positions are saved" />
+
         <SwitchPreference
             app:key="@string/preferences_swap_cross_moon_key"
             app:title="@string/preferences_swap_cross_moon_title"
@@ -83,6 +88,13 @@
             app:title="@string/preferences_codec_title"
             app:summary="%s"
             app:icon="@drawable/ic_codec"/>
+
+        <SeekBarPreference
+            app:key="@string/preferences_fire_drag_sensitivity_key"
+            app:title="@string/preferences_fire_drag_sensitivity_title"
+            app:min="5"
+            android:max="50"
+            app:defaultValue="15" />
     </PreferenceCategory>
 
     <PreferenceCategory
