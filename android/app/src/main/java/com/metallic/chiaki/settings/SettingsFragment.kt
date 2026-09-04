@@ -157,7 +157,7 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 		}
 
 		preferenceScreen.findPreference<SeekBarPreference>(preferences.fireDragSensitivityKey)?.summaryProvider =
-			Preference.SummaryProvider { String.format(Locale.US, "%.3f", preferences.fireDragSensitivity) }
+			Preference.SummaryProvider<SeekBarPreference> { String.format(Locale.US, "%.3f", preferences.fireDragSensitivity) }
 
 		val registeredHostsPreference = preferenceScreen.findPreference<Preference>("registered_hosts")
 		viewModel.registeredHostsCount.observe(this, Observer {
