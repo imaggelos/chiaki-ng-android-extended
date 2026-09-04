@@ -18,6 +18,7 @@ import com.metallic.chiaki.common.getDatabase
 import com.metallic.chiaki.common.importSettingsFromUri
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.rxkotlin.addTo
+import java.util.Locale
 
 class DataStore(val preferences: Preferences): PreferenceDataStore()
 {
@@ -47,9 +48,17 @@ class DataStore(val preferences: Preferences): PreferenceDataStore()
 		}
 	}
 
-	override fun getInt(key: String?, defValue: Int) = defValue
+	override fun getInt(key: String?, defValue: Int) = when(key)
+	{
+		preferences.fireDragSensitivityKey -> (preferences.fireDragSensitivity * 1000f).toInt()
+		else -> defValue
+	}
 
-	override fun putInt(key: String?, value: Int) {}
+	override fun putInt(key: String?, value: Int)
+	{
+		if(key == preferences.fireDragSensitivityKey)
+			preferences.fireDragSensitivity = value.coerceIn(5, 50) / 1000f
+	}
 
 	override fun getString(key: String, defValue: String?) = when
 	{
@@ -146,6 +155,9 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			it.entryValues = Preferences.codecAll.map { codec -> codec.value }.toTypedArray()
 			it.entries = Preferences.codecAll.map { codec -> getString(codec.title) }.toTypedArray()
 		}
+
+		preferenceScreen.findPreference<SeekBarPreference>(preferences.fireDragSensitivityKey)?.summaryProvider =
+			Preference.SummaryProvider { String.format(Locale.US, "%.3f", preferences.fireDragSensitivity) }
 
 		val registeredHostsPreference = preferenceScreen.findPreference<Preference>("registered_hosts")
 		viewModel.registeredHostsCount.observe(this, Observer {

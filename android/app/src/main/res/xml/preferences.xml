@@ -88,6 +88,13 @@
             app:title="@string/preferences_codec_title"
             app:summary="%s"
             app:icon="@drawable/ic_codec"/>
+
+        <SeekBarPreference
+            app:key="@string/preferences_fire_drag_sensitivity_key"
+            app:title="@string/preferences_fire_drag_sensitivity_title"
+            app:min="5"
+            android:max="50"
+            app:defaultValue="15" />
     </PreferenceCategory>
 
     <PreferenceCategory
