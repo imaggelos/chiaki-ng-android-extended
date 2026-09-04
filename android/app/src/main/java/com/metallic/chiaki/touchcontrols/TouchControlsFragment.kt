@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import com.metallic.chiaki.databinding.FragmentControlsBinding
+import com.metallic.chiaki.common.Preferences
 import com.metallic.chiaki.lib.ControllerState
 import com.metallic.chiaki.settings.TouchLayoutPrefs
 import io.reactivex.Observable
@@ -71,15 +72,19 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
     private val NEUTRAL_ORIENT_W = 1.0f
 
     // Fire & Drag - continuous velocity/accumulator aiming model
-    private val FIRE_AIM_SENSITIVITY = 0.015f
     private val PUBLISH_INTERVAL_MS = 8L
     private val INACTIVITY_TIMEOUT_MS = 30L
+    private val FIRE_SMOOTHING = 0.55f
 
     // aim velocity state (accumulator, clamped to [-1, 1])
     @Volatile
     private var aimX = 0f
     @Volatile
     private var aimY = 0f
+    @Volatile
+    private var smoothedX = 0f
+    @Volatile
+    private var smoothedY = 0f
     @Volatile
     private var lastMoveTime = 0L
     @Volatile
@@ -125,7 +130,9 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
                 // Start aim gesture
                 aimX = 0f
                 aimY = 0f
-                lastMoveTime = 0L
+                smoothedX = 0f
+                smoothedY = 0f
+                lastMoveTime = SystemClock.uptimeMillis()
                 isAimActive = true
 
                 // Immediately hold triggers and center stick
@@ -142,8 +149,9 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
             override fun onDrag(dx: Float, dy: Float) {
                 if (!isAimActive) return
                 // Accumulate velocity from relative raw deltas
-                aimX += dx * FIRE_AIM_SENSITIVITY
-                aimY += dy * FIRE_AIM_SENSITIVITY
+                val sensitivity = Preferences(requireContext()).fireDragSensitivity
+                aimX += dx * sensitivity
+                aimY += dy * sensitivity
                 // Clamp
                 aimX = aimX.coerceIn(-1f, 1f)
                 aimY = aimY.coerceIn(-1f, 1f)
@@ -157,6 +165,8 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
                 cancelPublisher()
                 aimX = 0f
                 aimY = 0f
+                smoothedX = 0f
+                smoothedY = 0f
                 lastMoveTime = 0L
 
                 ownControllerState = ownControllerState.copy().apply {
@@ -190,11 +200,8 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
                 val now = SystemClock.uptimeMillis()
                 val age = if (lastMoveTime == 0L) Long.MAX_VALUE else (now - lastMoveTime)
                 if (age > INACTIVITY_TIMEOUT_MS) {
-                    // No recent movement: neutralize aim but keep triggers held
-                    if (aimX != 0f || aimY != 0f) {
-                        aimX = 0f
-                        aimY = 0f
-                    }
+                    smoothedX = 0f
+                    smoothedY = 0f
                     ownControllerState = ownControllerState.copy().apply {
                         rightX = 0
                         rightY = 0
@@ -202,9 +209,10 @@ class DefaultTouchControlsFragment : TouchControlsFragment() {
                         r2State = 255U
                     }
                 } else {
-                    // Publish current accumulated aim velocity
-                    val qx = (Short.MAX_VALUE * aimX).toInt().toShort()
-                    val qy = (Short.MAX_VALUE * aimY).toInt().toShort()
+                    smoothedX += (aimX - smoothedX) * FIRE_SMOOTHING
+                    smoothedY += (aimY - smoothedY) * FIRE_SMOOTHING
+                    val qx = (Short.MAX_VALUE * smoothedX).toInt().toShort()
+                    val qy = (Short.MAX_VALUE * smoothedY).toInt().toShort()
                     ownControllerState = ownControllerState.copy().apply {
                         rightX = qx
                         rightY = qy
